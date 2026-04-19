@@ -193,6 +193,7 @@ export default class SchedulerData {
     });
     if (index !== -1) {
       this.eventGroups.splice(index, 1);
+      this._createRenderData();
       this.bumpVersion();
     }
   }
@@ -244,9 +245,23 @@ export default class SchedulerData {
   }
 
   setViewType(viewType = ViewType.Week, showAgenda = false, isEventPerspective = false) {
+    const previousShowAgenda = this.showAgenda;
+    const previousIsEventPerspective = this.isEventPerspective;
+
     this.showAgenda = showAgenda;
     this.isEventPerspective = isEventPerspective;
-    this.cellUnit = CellUnit.Day;
+
+    // Only set cellUnit to Day when view is not Day; set to Hour for Day view
+    if (viewType === ViewType.Day) {
+      this.cellUnit = CellUnit.Hour;
+    } else {
+      this.cellUnit = CellUnit.Day;
+    }
+
+    // If showAgenda or isEventPerspective changed, force reload
+    if (previousShowAgenda !== showAgenda || previousIsEventPerspective !== isEventPerspective) {
+      this._shouldReloadViewType = true;
+    }
 
     if (this.viewType !== viewType || this._shouldReloadViewType) {
       let date = this.startDate;
@@ -329,6 +344,7 @@ export default class SchedulerData {
     let slotEntered = false;
     let slotIndent = -1;
     let isExpanded = false;
+    let changed = false;
     const expandedMap = new Map();
     this.renderData.forEach(item => {
       if (slotEntered === false) {
@@ -337,6 +353,7 @@ export default class SchedulerData {
 
           isExpanded = !item.expanded;
           item.expanded = isExpanded;
+          changed = true;
           slotIndent = item.indent;
           expandedMap.set(item.indent, {
             expanded: item.expanded,
@@ -345,7 +362,11 @@ export default class SchedulerData {
         }
       } else if (item.indent > slotIndent) {
         const expandStatus = expandedMap.get(item.indent - 1);
-        item.render = expandStatus.expanded && expandStatus.render;
+        const newRender = expandStatus.expanded && expandStatus.render;
+        if (item.render !== newRender) {
+          item.render = newRender;
+          changed = true;
+        }
 
         if (item.hasChildren) {
           expandedMap.set(item.indent, {
@@ -357,7 +378,9 @@ export default class SchedulerData {
         slotEntered = false;
       }
     });
-    this.bumpVersion();
+    if (changed) {
+      this.bumpVersion();
+    }
   }
 
   isResourceViewResponsive() {
