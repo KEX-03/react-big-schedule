@@ -52,10 +52,11 @@ class ResourceEvents extends PureComponent {
   }
 
   componentDidUpdate(prevProps) {
-    if (prevProps !== this.props) {
-      const { schedulerData } = this.props;
+    const prevCreatable = prevProps.schedulerData?.config?.creatable;
+    const currentCreatable = this.props.schedulerData?.config?.creatable;
+    if (prevCreatable !== currentCreatable) {
       this.supportTouchHelper('remove');
-      if (schedulerData.config.creatable) {
+      if (currentCreatable) {
         this.supportTouchHelper();
       }
     }
@@ -407,8 +408,6 @@ class ResourceEvents extends PureComponent {
               width={width}
               top={top}
               clickAction={this.onAddMoreClick}
-              // Any specific AddMore requirements
-              onSetAddMoreState={this.props.onSetAddMoreState}
             />
           );
           eventList.push(addMoreItem);
@@ -453,6 +452,12 @@ const ResourceEventsWithDnD = props => {
   const { schedulerData, dndContext } = props;
   const { config } = schedulerData;
   const componentRef = React.useRef(null);
+  const propsRef = React.useRef(props);
+
+  // Keep propsRef up to date
+  React.useEffect(() => {
+    propsRef.current = props;
+  }, [props]);
 
   // Always call useDrop unconditionally (Rules of Hooks)
   // Disable functionality when drag and drop is not enabled
@@ -468,15 +473,15 @@ const ResourceEventsWithDnD = props => {
     const spec = dndContext.getDropSpec();
     return {
       accept: [...dndContext.sourceMap.keys()],
-      drop: (item, monitor) => spec.drop(props, monitor, componentRef.current),
-      hover: (item, monitor) => spec.hover(props, monitor, componentRef.current),
-      canDrop: (item, monitor) => spec.canDrop(props, monitor),
+      drop: (item, monitor) => spec.drop(propsRef.current, monitor, componentRef.current),
+      hover: (item, monitor) => spec.hover(propsRef.current, monitor, componentRef.current),
+      canDrop: (item, monitor) => spec.canDrop(propsRef.current, monitor),
       collect: monitor => ({
         isOver: monitor.isOver(),
         canDrop: monitor.canDrop(),
       }),
     };
-  }, [props, dndContext, config.dragAndDropEnabled]);
+  }, [dndContext, config.dragAndDropEnabled]);
 
   return <ResourceEvents ref={componentRef} {...props} dropRef={dropRef} isOver={isOver} canDrop={canDrop} />;
 };

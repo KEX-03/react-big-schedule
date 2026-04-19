@@ -86,6 +86,8 @@ AgendaResourceEvents.propTypes = {
   viewEvent2Text: PropTypes.string,
   slotClickedFunc: PropTypes.func,
   slotItemTemplateResolver: PropTypes.func,
+  eventItemTemplateResolver: PropTypes.func,
+  eventItemPopoverTemplateResolver: PropTypes.func,
 };
 
 export default AgendaResourceEvents;

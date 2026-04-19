@@ -73,9 +73,28 @@ export default class SchedulerData {
     this._versionChangeCallback = typeof callback === 'function' ? callback : null;
   }
 
+  beginBatch() {
+    this._batchCount = (this._batchCount || 0) + 1;
+  }
+
+  endBatch() {
+    if (this._batchCount > 0) {
+      this._batchCount -= 1;
+      if (this._batchCount === 0 && this._pendingVersion !== undefined) {
+        if (typeof this._versionChangeCallback === 'function') {
+          this._versionChangeCallback(this._pendingVersion);
+        }
+        this._pendingVersion = undefined;
+      }
+    }
+  }
+
   bumpVersion() {
     this.version += 1;
-    if (typeof this._versionChangeCallback === 'function') {
+    if (this._batchCount > 0) {
+      // Defer callback until batch ends
+      this._pendingVersion = this.version;
+    } else if (typeof this._versionChangeCallback === 'function') {
       this._versionChangeCallback(this.version);
     }
   }
@@ -132,14 +151,16 @@ export default class SchedulerData {
   }
 
   setBesidesWidth(besidesWidth) {
-    if (besidesWidth >= 0) {
+    if (besidesWidth >= 0 && this.config.besidesWidth !== besidesWidth) {
       this.config.besidesWidth = besidesWidth;
+      this.bumpVersion();
     }
   }
 
   setUnderneathHeight(underneathHeight) {
-    if (underneathHeight >= 0) {
+    if (underneathHeight >= 0 && this.config.underneathHeight !== underneathHeight) {
       this.config.underneathHeight = underneathHeight;
+      this.bumpVersion();
     }
   }
 
@@ -294,7 +315,10 @@ export default class SchedulerData {
   }
 
   setSchedulerMaxHeight(newSchedulerMaxHeight) {
-    this.config.schedulerMaxHeight = newSchedulerMaxHeight;
+    if (this.config.schedulerMaxHeight !== newSchedulerMaxHeight) {
+      this.config.schedulerMaxHeight = newSchedulerMaxHeight;
+      this.bumpVersion();
+    }
   }
 
   isSchedulerResponsive() {
@@ -621,21 +645,21 @@ export default class SchedulerData {
   }
 
   _setDocumentWidth(documentWidth) {
-    if (documentWidth >= 0) {
+    if (documentWidth >= 0 && this.documentWidth !== documentWidth) {
       this.documentWidth = documentWidth;
       this.bumpVersion();
     }
   }
 
   _setDocumentHeight(documentHeight) {
-    if (documentHeight >= 0) {
+    if (documentHeight >= 0 && this.documentHeight !== documentHeight) {
       this.documentHeight = documentHeight;
       this.bumpVersion();
     }
   }
 
   _setSchedulerHeaderHeight(schedulerHeaderHeight) {
-    if (schedulerHeaderHeight >= 0) {
+    if (schedulerHeaderHeight >= 0 && this.schedulerHeaderHeight !== schedulerHeaderHeight) {
       this.schedulerHeaderHeight = schedulerHeaderHeight;
       this.bumpVersion();
     }
