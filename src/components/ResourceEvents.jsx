@@ -209,8 +209,12 @@ class ResourceEvents extends PureComponent {
         .second(59)
         .format(DATETIME_FORMAT);
     }
-    const { slotId } = resourceEvents;
-    const { slotName } = resourceEvents;
+
+    // Get selected resource IDs
+    const selectedResourceIds = this.getSelectedResourceIds();
+    const slotId = selectedResourceIds.length > 0 ? selectedResourceIds[0] : resourceEvents.slotId;
+    const slotName =
+      selectedResourceIds.length > 0 ? schedulerData.getResourceById(slotId)?.name || slotId : resourceEvents.slotName;
 
     this.setState({
       startX: 0,
@@ -219,6 +223,8 @@ class ResourceEvents extends PureComponent {
       rightIndex: 0,
       width: 0,
       isSelecting: false,
+      startRowIndex: -1,
+      endRowIndex: -1,
     });
 
     let hasConflict = false;
@@ -227,7 +233,10 @@ class ResourceEvents extends PureComponent {
       const end = localeDayjs(endTime);
 
       events.forEach(e => {
-        if (schedulerData._getEventSlotId(e) === slotId) {
+        const eventResourceIds = e.resourceIds || [e.resourceId];
+        const hasOverlap = selectedResourceIds.some(selectedId => eventResourceIds.includes(selectedId));
+
+        if (hasOverlap) {
           const eStart = localeDayjs(e.start);
           const eEnd = localeDayjs(e.end);
           if (
@@ -251,6 +260,8 @@ class ResourceEvents extends PureComponent {
             id: undefined,
             start: startTime,
             end: endTime,
+            resourceId: slotId, // Keep for backward compatibility
+            resourceIds: selectedResourceIds, // Add multi-resource support
             slotId,
             slotName,
             title: undefined,
@@ -264,7 +275,12 @@ class ResourceEvents extends PureComponent {
       } else {
         console.log('Conflict occurred, set conflictOccurred func in Scheduler to handle it');
       }
-    } else if (newEvent !== undefined) newEvent(schedulerData, slotId, slotName, startTime, endTime);
+    } else if (newEvent !== undefined) {
+      // Pass resourceIds for multi-resource events
+      newEvent(schedulerData, slotId, slotName, startTime, endTime, undefined, {
+        resourceIds: selectedResourceIds.length > 1 ? selectedResourceIds : undefined,
+      });
+    }
   };
 
   cancelDrag = ev => {
@@ -347,7 +363,7 @@ class ResourceEvents extends PureComponent {
   render() {
     const { resourceEvents, schedulerData, dndSource } = this.props;
     const { cellUnit, startDate, endDate, config, localeDayjs } = schedulerData;
-    const { isSelecting, left, width } = this.state;
+    const { isSelecting, left, width, startRowIndex, endRowIndex } = this.state;
     const cellWidth = schedulerData.getContentCellWidth();
     const cellMaxEvents = schedulerData.getCellMaxEvents();
     const rowWidth = schedulerData.getContentTableWidth();
@@ -357,6 +373,24 @@ class ResourceEvents extends PureComponent {
     ) : (
       <div />
     );
+
+    // Add vertical selection overlay
+    const verticalSelectionOverlay =
+      isSelecting && startRowIndex !== endRowIndex ? (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundColor: 'rgba(0, 123, 255, 0.1)',
+            border: '2px dashed #007bff',
+            pointerEvents: 'none',
+            zIndex: 10,
+          }}
+        />
+      ) : null;
 
     const eventList = [];
     resourceEvents.headerItems.forEach((headerItem, index) => {
@@ -423,8 +457,10 @@ class ResourceEvents extends PureComponent {
             }
 
             const top = marginTop + idx * config.eventItemLineHeight;
+            const eventKey = `${evt.eventItem.id}_${resourceEvents.slotId}_${index}`;
             const eventItem = (
               <EventItem
+                key={eventKey}
                 schedulerData={schedulerData}
                 eventItem={evt.eventItem}
                 dndSource={dndSource}
@@ -495,6 +531,7 @@ class ResourceEvents extends PureComponent {
     const eventContainer = (
       <div ref={this.eventContainerRef} className="event-container" style={{ height: resourceEvents.rowHeight }}>
         {selectedArea}
+        {verticalSelectionOverlay}
         {eventList}
       </div>
     );
