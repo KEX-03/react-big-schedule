@@ -1,6 +1,6 @@
 {
   "name": "react-big-schedule",
-  "version": "5.4.9-beta.2",
+  "version": "5.4.10-beta.3",
   "description": "React Big Schedule  is a powerful and intuitive scheduler and resource planning solution built with React. Seamlessly integrate this modern browser-compatible component into your applications to effectively manage time, appointments, and resources. With drag-and-drop functionality, interactive UI, and granular views, react-big-schedule empowers users to effortlessly schedule and allocate resources with precision. Enhance productivity and streamline your workflow with this React-based solution, designed to optimize time management and simplify calendar-based operations. Perfect for applications requiring advanced scheduling capabilities, react-big-schedule offers a seamless and intuitive experience for managing appointments, resource allocation, and time slots. Unlock the potential of your React projects with react-big-schedule and revolutionize the way you handle scheduling and resource planning. It is the updated version of react-big-scheduler",
   "keywords": [
     "react-big-schedule",
@@ -64,15 +64,15 @@
     "format": "npm run prettier:fix && npm run lint:fix"
   },
   "dependencies": {
-    "@ant-design/icons": "^6.1.1",
-    "antd": "^6.3.5",
+    "@ant-design/icons": "^6.2.2",
+    "antd": "^6.3.7",
     "dayjs": "^1.11.20",
     "prop-types": "^15.8.1",
     "react": "^19.2.5",
     "react-dnd": "^16.0.1",
     "react-dnd-html5-backend": "^16.0.1",
     "react-dom": "^19.2.5",
-    "react-router-dom": "^7.14.1",
+    "react-router-dom": "^7.14.2",
     "rrule": "^2.8.1"
   },
   "devDependencies": {
@@ -90,10 +90,10 @@
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-prettier": "^5.5.5",
     "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "^7.1.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-webpack-plugin": "^6.0.0",
     "fs-extra": "^11.3.4",
-    "html-webpack-plugin": "^5.6.6",
+    "html-webpack-plugin": "^5.6.7",
     "prettier": "^3.8.1",
     "style-loader": "^4.0.0",
     "webpack": "^5.106.2",
