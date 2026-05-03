@@ -37,6 +37,10 @@ class ResourceEvents extends PureComponent {
       isSelecting: false,
       left: 0,
       width: 0,
+
+      // Add vertical selection tracking
+      startRowIndex: -1,
+      endRowIndex: -1,
     };
     this.supportTouch = false; // 'ontouchstart' in window;
   }
@@ -95,7 +99,19 @@ class ResourceEvents extends PureComponent {
     const rightIndex = Math.ceil(startX / cellWidth);
     const width = (rightIndex - leftIndex) * cellWidth;
 
-    this.setState({ startX, left, leftIndex, width, rightIndex, isSelecting: true });
+    // Get the row index of this resource
+    const startRowIndex = this.getResourceRowIndex(resourceEvents.slotId);
+
+    this.setState({
+      startX,
+      left,
+      leftIndex,
+      width,
+      rightIndex,
+      isSelecting: true,
+      startRowIndex,
+      endRowIndex: startRowIndex, // Initially same as start
+    });
 
     if (this.supportTouch) {
       document.documentElement.addEventListener('touchmove', this.doDrag, false);
@@ -117,7 +133,7 @@ class ResourceEvents extends PureComponent {
     if (toReturn) {
       return;
     }
-    const { startX } = this.state;
+    const { startX, startRowIndex } = this.state;
     const { schedulerData } = this.props;
     const { headers } = schedulerData;
     const cellWidth = schedulerData.getContentCellWidth();
@@ -130,7 +146,26 @@ class ResourceEvents extends PureComponent {
     rightIndex = rightIndex > headers.length ? headers.length : rightIndex;
     const width = (rightIndex - leftIndex) * cellWidth;
 
-    this.setState({ leftIndex, left, rightIndex, width, isSelecting: true });
+    // Calculate current row based on mouse Y position
+    const currentY = ev.clientY - pos.y;
+    const rowHeight = schedulerData.renderData[startRowIndex]?.rowHeight || 50;
+    const currentRowIndex = startRowIndex + Math.round(currentY / rowHeight);
+    const minRowIndex = Math.min(startRowIndex, currentRowIndex);
+    const maxRowIndex = Math.max(startRowIndex, currentRowIndex);
+
+    // Clamp to valid row indices
+    const clampedMinRow = Math.max(0, minRowIndex);
+    const clampedMaxRow = Math.min(schedulerData.renderData.length - 1, maxRowIndex);
+
+    this.setState({
+      leftIndex,
+      left,
+      rightIndex,
+      width,
+      isSelecting: true,
+      endRowIndex: clampedMaxRow,
+      startRowIndex: clampedMinRow, // Update start to min for normalization
+    });
   };
 
   dragHelper = (ev, dragType) => {
@@ -283,6 +318,11 @@ class ResourceEvents extends PureComponent {
     if (dropRef) {
       dropRef(element);
     }
+  };
+
+  getResourceRowIndex = slotId => {
+    const { schedulerData } = this.props;
+    return schedulerData.renderData.findIndex(row => row.slotId === slotId);
   };
 
   render() {
