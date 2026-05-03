@@ -968,7 +968,17 @@ export default class SchedulerData {
   }
 
   _getEventSlotId(event) {
-    return this.isEventPerspective ? this._getEventGroupId(event) : event.resourceId;
+    if (this.isEventPerspective) {
+      return this._getEventGroupId(event);
+    }
+    // Support for multi-resource events
+    if (event.resourceIds && event.resourceIds.length > 0) {
+      // For multi-resource events, return the first resourceId for backward compatibility
+      // The rendering logic will handle showing on multiple rows
+      return event.resourceIds[0];
+    }
+    // Fallback to single resourceId
+    return event.resourceId;
   }
 
   _getEventGroupId(event) {
@@ -1283,48 +1293,60 @@ export default class SchedulerData {
     const cellMaxEventsCountValue = 30;
 
     this.events.forEach(item => {
-      const resourceEventsList = initRenderData.filter(x => x.slotId === this._getEventSlotId(item));
-      if (resourceEventsList.length > 0) {
-        const resourceEvents = resourceEventsList[0];
-        const span = this._getSpan(item.start, item.end, this.headers);
-        const eventStart = new Date(item.start);
-        const eventEnd = new Date(item.end);
-        let pos = -1;
+      let targetSlotIds = [];
 
-        resourceEvents.headerItems.forEach((header, index) => {
-          const headerStart = new Date(header.start);
-          const headerEnd = new Date(header.end);
-          if (headerEnd > eventStart && headerStart < eventEnd) {
-            header.count += 1;
-            if (header.count > resourceEvents.rowMaxCount) {
-              resourceEvents.rowMaxCount = header.count;
-              const rowsCount =
-                cellMaxEventsCount <= cellMaxEventsCountValue && resourceEvents.rowMaxCount > cellMaxEventsCount
-                  ? cellMaxEventsCount
-                  : resourceEvents.rowMaxCount;
-              const newRowHeight =
-                rowsCount * this.config.eventItemLineHeight +
-                (this.config.creatable && this.config.checkConflict === false ? 20 : 2);
-              if (newRowHeight > resourceEvents.rowHeight) resourceEvents.rowHeight = newRowHeight;
-            }
-
-            if (pos === -1) {
-              let tmp = 0;
-              while (header.events[tmp] !== undefined) tmp += 1;
-
-              pos = tmp;
-            }
-            let render = headerStart <= eventStart || index === 0;
-            if (render === false) {
-              const previousHeader = resourceEvents.headerItems[index - 1];
-              const previousHeaderStart = new Date(previousHeader.start);
-              const previousHeaderEnd = new Date(previousHeader.end);
-              if (previousHeaderEnd <= eventStart || previousHeaderStart >= eventEnd) render = true;
-            }
-            header.events[pos] = this._createHeaderEvent(render, span, item);
-          }
-        });
+      if (item.resourceIds && item.resourceIds.length > 0) {
+        // Multi-resource event
+        targetSlotIds = item.resourceIds;
+      } else if (item.resourceId) {
+        // Single resource event (backward compatibility)
+        targetSlotIds = [item.resourceId];
       }
+
+      targetSlotIds.forEach(slotId => {
+        const resourceEventsList = initRenderData.filter(x => x.slotId === slotId);
+        if (resourceEventsList.length > 0) {
+          const resourceEvents = resourceEventsList[0];
+          const span = this._getSpan(item.start, item.end, this.headers);
+          const eventStart = new Date(item.start);
+          const eventEnd = new Date(item.end);
+          let pos = -1;
+
+          resourceEvents.headerItems.forEach((header, index) => {
+            const headerStart = new Date(header.start);
+            const headerEnd = new Date(header.end);
+            if (headerEnd > eventStart && headerStart < eventEnd) {
+              header.count += 1;
+              if (header.count > resourceEvents.rowMaxCount) {
+                resourceEvents.rowMaxCount = header.count;
+                const rowsCount =
+                  cellMaxEventsCount <= cellMaxEventsCountValue && resourceEvents.rowMaxCount > cellMaxEventsCount
+                    ? cellMaxEventsCount
+                    : resourceEvents.rowMaxCount;
+                const newRowHeight =
+                  rowsCount * this.config.eventItemLineHeight +
+                  (this.config.creatable && this.config.checkConflict === false ? 20 : 2);
+                if (newRowHeight > resourceEvents.rowHeight) resourceEvents.rowHeight = newRowHeight;
+              }
+
+              if (pos === -1) {
+                let tmp = 0;
+                while (header.events[tmp] !== undefined) tmp += 1;
+
+                pos = tmp;
+              }
+              let render = headerStart <= eventStart || index === 0;
+              if (render === false) {
+                const previousHeader = resourceEvents.headerItems[index - 1];
+                const previousHeaderStart = new Date(previousHeader.start);
+                const previousHeaderEnd = new Date(previousHeader.end);
+                if (previousHeaderEnd <= eventStart || previousHeaderStart >= eventEnd) render = true;
+              }
+              header.events[pos] = this._createHeaderEvent(render, span, item);
+            }
+          });
+        }
+      });
     });
 
     if (cellMaxEventsCount <= cellMaxEventsCountValue || this.behaviors.getSummaryFunc !== undefined) {
