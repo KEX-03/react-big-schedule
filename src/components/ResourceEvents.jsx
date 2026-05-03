@@ -325,6 +325,25 @@ class ResourceEvents extends PureComponent {
     return schedulerData.renderData.findIndex(row => row.slotId === slotId);
   };
 
+  getSelectedResourceIds = () => {
+    const { startRowIndex, endRowIndex } = this.state;
+    const { schedulerData } = this.props;
+
+    if (startRowIndex === -1 || endRowIndex === -1) {
+      return [];
+    }
+
+    const selectedResourceIds = [];
+    for (let i = startRowIndex; i <= endRowIndex; i++) {
+      const row = schedulerData.renderData[i];
+      if (row && !row.groupOnly) {
+        selectedResourceIds.push(row.slotId);
+      }
+    }
+
+    return selectedResourceIds;
+  };
+
   render() {
     const { resourceEvents, schedulerData, dndSource } = this.props;
     const { cellUnit, startDate, endDate, config, localeDayjs } = schedulerData;
