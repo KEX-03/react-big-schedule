@@ -131,11 +131,16 @@ function Scheduler(props) {
   const [parentEl, setParentEl] = useState(null);
   const setParentRef = useCallback(
     el => {
-      parentRef.current = el;
+      if (parentRef) {
+        parentRef.current = el;
+      }
       setParentEl(el);
     },
     [parentRef]
   );
+
+  // Layout/header refs - declare before setSchedulerHeaderRef useCallback
+  const schedulerHeaderRef = useRef(null);
 
   // Callback ref pattern for ResizeObserver to handle schedulerHeader element reassignment
   const [schedulerHeaderEl, setSchedulerHeaderEl] = useState(null);
@@ -152,9 +157,6 @@ function Scheduler(props) {
   const schedulerResourceRef = useRef(null);
   const schedulerContentRef = useRef(null);
   const schedulerContentBgTableRef = useRef(null);
-
-  // Layout/header refs
-  const schedulerHeaderRef = useRef(null);
 
   // Observer refs
   const ulObserverRef = useRef(null);
@@ -201,6 +203,11 @@ function Scheduler(props) {
     if (parentRef !== undefined && schedulerData.config.responsiveByParent && !!parentEl) {
       schedulerData._setDocumentWidth(parentEl.offsetWidth);
 
+      // Disconnect any previous observer to prevent memory leaks
+      if (ulObserverRef.current) {
+        ulObserverRef.current.disconnect();
+      }
+
       ulObserverRef.current = new ResizeObserver(() => {
         if (parentEl) {
           schedulerData._setDocumentWidth(parentEl.offsetWidth);
@@ -211,8 +218,8 @@ function Scheduler(props) {
       ulObserverRef.current.observe(parentEl);
 
       return () => {
-        if (ulObserverRef.current && parentEl) {
-          ulObserverRef.current.unobserve(parentEl);
+        if (ulObserverRef.current) {
+          ulObserverRef.current.disconnect();
         }
       };
     }
