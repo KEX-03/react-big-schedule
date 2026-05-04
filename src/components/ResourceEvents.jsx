@@ -29,6 +29,7 @@ class ResourceEvents extends PureComponent {
     newEvent: PropTypes.func,
     eventItemTemplateResolver: PropTypes.func,
     onSelectionChange: PropTypes.func,
+    selectionState: PropTypes.object,
   };
 
   constructor(props) {
@@ -119,7 +120,7 @@ class ResourceEvents extends PureComponent {
       startRowIndex,
       endRowIndex: startRowIndex, // Initially same as start
     });
-    this.emitSelectionChange(true, this.getSelectedResourceIds(startRowIndex, startRowIndex));
+    this.emitSelectionChange(true, this.getSelectedResourceIds(startRowIndex, startRowIndex), { left, width });
 
     if (this.supportTouch) {
       document.documentElement.addEventListener('touchmove', this.doDrag, false);
@@ -194,7 +195,7 @@ class ResourceEvents extends PureComponent {
       startRowIndex: clampedMinRow,
       endRowIndex: clampedMaxRow,
     });
-    this.emitSelectionChange(true, this.getSelectedResourceIds(clampedMinRow, clampedMaxRow));
+    this.emitSelectionChange(true, this.getSelectedResourceIds(clampedMinRow, clampedMaxRow), { left, width });
   };
 
   dragHelper = (ev, dragType) => {
@@ -256,7 +257,7 @@ class ResourceEvents extends PureComponent {
       startRowIndex: -1,
       endRowIndex: -1,
     });
-    this.emitSelectionChange(false, []);
+    this.emitSelectionChange(false, [], { left: 0, width: 0 });
 
     let hasConflict = false;
     if (config.checkConflict) {
@@ -335,14 +336,14 @@ class ResourceEvents extends PureComponent {
         startRowIndex: -1,
         endRowIndex: -1,
       });
-      this.emitSelectionChange(false, []);
+      this.emitSelectionChange(false, [], { left: 0, width: 0 });
     }
   };
 
-  emitSelectionChange = (isSelecting, selectedResourceIds) => {
+  emitSelectionChange = (isSelecting, selectedResourceIds, preview = {}) => {
     const { onSelectionChange } = this.props;
     if (onSelectionChange) {
-      onSelectionChange(isSelecting, selectedResourceIds);
+      onSelectionChange(isSelecting, selectedResourceIds, preview);
     }
   };
 
@@ -421,6 +422,16 @@ class ResourceEvents extends PureComponent {
     ) : (
       <div />
     );
+
+    const sharedSelecting = this.props.selectionState?.isSelecting;
+    const sharedSelectedResourceIds = this.props.selectionState?.selectedResourceIds || [];
+    const isSharedSelectedRow = sharedSelecting && sharedSelectedResourceIds.includes(resourceEvents.slotId);
+    const sharedLeft = this.props.selectionState?.left || 0;
+    const sharedWidth = this.props.selectionState?.width || 0;
+    const sharedSelectedArea =
+      !isSelecting && isSharedSelectedRow ? (
+        <SelectedArea schedulerData={schedulerData} left={sharedLeft} width={sharedWidth} />
+      ) : null;
 
     // Add vertical selection overlay
     const verticalSelectionOverlay =
@@ -579,6 +590,7 @@ class ResourceEvents extends PureComponent {
     const eventContainer = (
       <div ref={this.eventContainerRef} className="event-container" style={{ height: resourceEvents.rowHeight }}>
         {selectedArea}
+        {sharedSelectedArea}
         {verticalSelectionOverlay}
         {eventList}
       </div>
