@@ -138,6 +138,7 @@ class DragAndDrop extends Component {
         start,
         end,
         resourceId: slotId,
+        resourceIds: Array.isArray(item?.resourceIds) && item.resourceIds.length > 0 ? item.resourceIds : [slotId],
         bgColor: 'purple',
       };
 
@@ -147,6 +148,7 @@ class DragAndDrop extends Component {
           groupId: slotId,
           groupName: slotName,
           resourceId: item.id,
+          resourceIds: [item.id],
         };
       } else if (type === DnDTypes.TASK) {
         newEvent = {

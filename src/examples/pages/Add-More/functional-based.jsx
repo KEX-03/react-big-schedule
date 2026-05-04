@@ -98,7 +98,8 @@ function AddMore() {
         title: 'New event you just created',
         start,
         end,
-        resourceId: slotId,
+        resourceId: Array.isArray(item?.resourceIds) && item.resourceIds.length > 0 ? item.resourceIds[0] : slotId,
+        resourceIds: Array.isArray(item?.resourceIds) && item.resourceIds.length > 0 ? item.resourceIds : [slotId],
         bgColor: 'purple',
       };
       schedulerData.addEvent(newEvent);

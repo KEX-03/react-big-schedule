@@ -330,6 +330,9 @@ export default class SchedulerData {
   }
 
   setSchedulerMaxHeight(newSchedulerMaxHeight) {
+    if (newSchedulerMaxHeight < 0) {
+      return;
+    }
     if (this.config.schedulerMaxHeight !== newSchedulerMaxHeight) {
       this.config.schedulerMaxHeight = newSchedulerMaxHeight;
       this.bumpVersion();
@@ -1247,15 +1250,17 @@ export default class SchedulerData {
         console.error(`Event undefined: ${index}`);
         throw new Error(`Event undefined: ${index}`);
       }
+      const hasResourceTarget =
+        e.resourceId !== undefined || (Array.isArray(e.resourceIds) && e.resourceIds.length > 0);
       if (
         e.id === undefined ||
-        e.resourceId === undefined ||
+        !hasResourceTarget ||
         e.title === undefined ||
         e.start === undefined ||
         e.end === undefined
       ) {
-        console.error('Event property missed', index, e);
-        throw new Error(`Event property undefined: ${index}`);
+        console.error('Event property missed (id, resourceId/resourceIds, title, start, end)', index, e);
+        throw new Error(`Event property undefined (id/resourceId|resourceIds/title/start/end): ${index}`);
       }
     });
   }

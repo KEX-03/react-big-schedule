@@ -39,6 +39,7 @@ class ResourceEvents extends PureComponent {
       width: 0,
 
       // Add vertical selection tracking
+      originalStartRowIndex: -1,
       startRowIndex: -1,
       endRowIndex: -1,
     };
@@ -109,6 +110,7 @@ class ResourceEvents extends PureComponent {
       width,
       rightIndex,
       isSelecting: true,
+      originalStartRowIndex: startRowIndex,
       startRowIndex,
       endRowIndex: startRowIndex, // Initially same as start
     });
@@ -133,7 +135,7 @@ class ResourceEvents extends PureComponent {
     if (toReturn) {
       return;
     }
-    const { startX, startRowIndex } = this.state;
+    const { startX, originalStartRowIndex } = this.state;
     const { schedulerData } = this.props;
     const { headers } = schedulerData;
     const cellWidth = schedulerData.getContentCellWidth();
@@ -146,16 +148,36 @@ class ResourceEvents extends PureComponent {
     rightIndex = rightIndex > headers.length ? headers.length : rightIndex;
     const width = (rightIndex - leftIndex) * cellWidth;
 
-    // Calculate current row based on mouse Y position
-    const currentY = ev.clientY - pos.y;
-    const rowHeight = schedulerData.renderData[startRowIndex]?.rowHeight || 50;
-    const currentRowIndex = startRowIndex + Math.round(currentY / rowHeight);
-    const minRowIndex = Math.min(startRowIndex, currentRowIndex);
-    const maxRowIndex = Math.max(startRowIndex, currentRowIndex);
+    // Calculate current row based on per-row heights (not a uniform row height assumption).
+    let clientY = ev.clientY;
+    if (this.supportTouch && ev.changedTouches && ev.changedTouches.length > 0) {
+      clientY = ev.changedTouches[0].pageY;
+    }
+    const currentY = clientY - pos.y;
+    const displayRenderData = this.getDisplayRenderData();
+    const rowHeights = displayRenderData.map(row => row?.rowHeight || 50);
+    const startRowTop = rowHeights.slice(0, Math.max(0, originalStartRowIndex)).reduce((sum, h) => sum + h, 0);
+    const absoluteY = startRowTop + currentY;
+
+    let cumulativeHeight = 0;
+    let currentRowIndex = rowHeights.length - 1;
+    for (let i = 0; i < rowHeights.length; i += 1) {
+      cumulativeHeight += rowHeights[i];
+      if (absoluteY < cumulativeHeight) {
+        currentRowIndex = i;
+        break;
+      }
+    }
+    if (absoluteY < 0) {
+      currentRowIndex = 0;
+    }
+
+    const minRowIndex = Math.min(originalStartRowIndex, currentRowIndex);
+    const maxRowIndex = Math.max(originalStartRowIndex, currentRowIndex);
 
     // Clamp to valid row indices
     const clampedMinRow = Math.max(0, minRowIndex);
-    const clampedMaxRow = Math.min(schedulerData.renderData.length - 1, maxRowIndex);
+    const clampedMaxRow = Math.min(displayRenderData.length - 1, maxRowIndex);
 
     this.setState({
       leftIndex,
@@ -163,8 +185,8 @@ class ResourceEvents extends PureComponent {
       rightIndex,
       width,
       isSelecting: true,
+      startRowIndex: clampedMinRow,
       endRowIndex: clampedMaxRow,
-      startRowIndex: clampedMinRow, // Update start to min for normalization
     });
   };
 
@@ -223,6 +245,7 @@ class ResourceEvents extends PureComponent {
       rightIndex: 0,
       width: 0,
       isSelecting: false,
+      originalStartRowIndex: -1,
       startRowIndex: -1,
       endRowIndex: -1,
     });
@@ -300,6 +323,9 @@ class ResourceEvents extends PureComponent {
         rightIndex: 0,
         width: 0,
         isSelecting: false,
+        originalStartRowIndex: -1,
+        startRowIndex: -1,
+        endRowIndex: -1,
       });
     }
   };
@@ -337,13 +363,17 @@ class ResourceEvents extends PureComponent {
   };
 
   getResourceRowIndex = slotId => {
+    return this.getDisplayRenderData().findIndex(row => row.slotId === slotId);
+  };
+
+  getDisplayRenderData = () => {
     const { schedulerData } = this.props;
-    return schedulerData.renderData.findIndex(row => row.slotId === slotId);
+    return schedulerData.renderData.filter(row => row.render);
   };
 
   getSelectedResourceIds = () => {
     const { startRowIndex, endRowIndex } = this.state;
-    const { schedulerData } = this.props;
+    const displayRenderData = this.getDisplayRenderData();
 
     if (startRowIndex === -1 || endRowIndex === -1) {
       return [];
@@ -351,7 +381,7 @@ class ResourceEvents extends PureComponent {
 
     const selectedResourceIds = [];
     for (let i = startRowIndex; i <= endRowIndex; i++) {
-      const row = schedulerData.renderData[i];
+      const row = displayRenderData[i];
       if (row && !row.groupOnly) {
         selectedResourceIds.push(row.slotId);
       }

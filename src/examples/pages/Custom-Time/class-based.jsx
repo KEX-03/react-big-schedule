@@ -112,13 +112,16 @@ class CustomTime extends Component {
       schedulerData.events.forEach(item => {
         if (item.id >= newFreshId) newFreshId = item.id + 1;
       });
+      const selectedResourceIds =
+        Array.isArray(item?.resourceIds) && item.resourceIds.length > 0 ? item.resourceIds : [slotId];
 
       let newEvent = {
         id: newFreshId,
         title: 'New event you just created',
-        start: start,
-        end: end,
-        resourceId: slotId,
+        start,
+        end,
+        resourceId: selectedResourceIds[0],
+        resourceIds: selectedResourceIds,
         bgColor: 'purple',
       };
       schedulerData.addEvent(newEvent);
