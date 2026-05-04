@@ -229,7 +229,7 @@ function Scheduler(props) {
         }
       };
     }
-  }, [parentEl, schedulerData]);
+  }, [parentEl, parentRef, schedulerData]);
 
   useEffect(() => {
     if (schedulerData.config.responsiveByParent && !!schedulerHeaderEl) {
