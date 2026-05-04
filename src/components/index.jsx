@@ -125,6 +125,7 @@ function Scheduler(props) {
   const [contentScrollbarWidth, setContentScrollbarWidth] = useState(17);
   const [resourceScrollbarHeight, setResourceScrollbarHeight] = useState(17);
   const [resourceScrollbarWidth, setResourceScrollbarWidth] = useState(17);
+  const [selectionState, setSelectionState] = useState({ isSelecting: false, selectedResourceIds: [] });
   const [, setRenderTrigger] = useState(0);
 
   // Callback ref pattern for ResizeObserver to handle parent element reassignment
@@ -437,6 +438,9 @@ function Scheduler(props) {
 
   const displayRenderData = useMemo(() => renderData.filter(o => o.render), [renderData]);
   const eventDndSource = dndContext.getDndSource();
+  const handleSelectionChange = useCallback((isSelecting, selectedResourceIds) => {
+    setSelectionState({ isSelecting, selectedResourceIds: selectedResourceIds || [] });
+  }, []);
   const resourceEventsList = useMemo(
     () =>
       displayRenderData.map(item => (
@@ -461,6 +465,7 @@ function Scheduler(props) {
           viewEvent2Text={props.viewEvent2Text}
           newEvent={props.newEvent}
           eventItemTemplateResolver={props.eventItemTemplateResolver}
+          onSelectionChange={handleSelectionChange}
         />
       )),
     [
@@ -483,6 +488,7 @@ function Scheduler(props) {
       props.viewEvent2Text,
       props.newEvent,
       props.eventItemTemplateResolver,
+      handleSelectionChange,
     ]
   );
 
@@ -617,6 +623,8 @@ function Scheduler(props) {
                 slotItemTemplateResolver={props.slotItemTemplateResolver}
                 toggleExpandFunc={props.toggleExpandFunc}
                 CustomResourceCell={props.CustomResourceCell}
+                isSelecting={selectionState.isSelecting}
+                selectedResourceIds={selectionState.selectedResourceIds}
               />
             </div>
           </div>

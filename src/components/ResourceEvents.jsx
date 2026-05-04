@@ -28,6 +28,7 @@ class ResourceEvents extends PureComponent {
     viewEvent2Text: PropTypes.string,
     newEvent: PropTypes.func,
     eventItemTemplateResolver: PropTypes.func,
+    onSelectionChange: PropTypes.func,
   };
 
   constructor(props) {
@@ -65,6 +66,10 @@ class ResourceEvents extends PureComponent {
         this.supportTouchHelper();
       }
     }
+  }
+
+  componentWillUnmount() {
+    this.emitSelectionChange(false, []);
   }
 
   supportTouchHelper = (evType = 'add') => {
@@ -114,6 +119,7 @@ class ResourceEvents extends PureComponent {
       startRowIndex,
       endRowIndex: startRowIndex, // Initially same as start
     });
+    this.emitSelectionChange(true, this.getSelectedResourceIds(startRowIndex, startRowIndex));
 
     if (this.supportTouch) {
       document.documentElement.addEventListener('touchmove', this.doDrag, false);
@@ -188,6 +194,7 @@ class ResourceEvents extends PureComponent {
       startRowIndex: clampedMinRow,
       endRowIndex: clampedMaxRow,
     });
+    this.emitSelectionChange(true, this.getSelectedResourceIds(clampedMinRow, clampedMaxRow));
   };
 
   dragHelper = (ev, dragType) => {
@@ -249,6 +256,7 @@ class ResourceEvents extends PureComponent {
       startRowIndex: -1,
       endRowIndex: -1,
     });
+    this.emitSelectionChange(false, []);
 
     let hasConflict = false;
     if (config.checkConflict) {
@@ -327,6 +335,14 @@ class ResourceEvents extends PureComponent {
         startRowIndex: -1,
         endRowIndex: -1,
       });
+      this.emitSelectionChange(false, []);
+    }
+  };
+
+  emitSelectionChange = (isSelecting, selectedResourceIds) => {
+    const { onSelectionChange } = this.props;
+    if (onSelectionChange) {
+      onSelectionChange(isSelecting, selectedResourceIds);
     }
   };
 
@@ -371,16 +387,18 @@ class ResourceEvents extends PureComponent {
     return schedulerData.renderData.filter(row => row.render);
   };
 
-  getSelectedResourceIds = () => {
+  getSelectedResourceIds = (startOverride, endOverride) => {
     const { startRowIndex, endRowIndex } = this.state;
     const displayRenderData = this.getDisplayRenderData();
+    const from = startOverride !== undefined ? startOverride : startRowIndex;
+    const to = endOverride !== undefined ? endOverride : endRowIndex;
 
-    if (startRowIndex === -1 || endRowIndex === -1) {
+    if (from === -1 || to === -1) {
       return [];
     }
 
     const selectedResourceIds = [];
-    for (let i = startRowIndex; i <= endRowIndex; i++) {
+    for (let i = from; i <= to; i++) {
       const row = displayRenderData[i];
       if (row && !row.groupOnly) {
         selectedResourceIds.push(row.slotId);
