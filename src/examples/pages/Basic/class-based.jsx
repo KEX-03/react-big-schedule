@@ -108,10 +108,7 @@ class Basic extends Component {
           `start: ${start}, end: ${end}, type: ${type}, item: ${item}}`
       )
     ) {
-      let newFreshId = 0;
-      schedulerData.events.forEach(existingEvent => {
-        if (existingEvent.id >= newFreshId) newFreshId = existingEvent.id + 1;
-      });
+      const newFreshId = Math.max(0, ...schedulerData.events.map(existingEvent => existingEvent.id)) + 1;
       const selectedResourceIds =
         Array.isArray(item?.resourceIds) && item.resourceIds.length > 0 ? item.resourceIds : [slotId];
 

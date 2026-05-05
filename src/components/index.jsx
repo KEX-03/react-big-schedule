@@ -237,8 +237,8 @@ function Scheduler(props) {
       headerObserverRef.current.observe(schedulerHeaderEl);
 
       return () => {
-        if (headerObserverRef.current && schedulerHeaderEl) {
-          headerObserverRef.current.unobserve(schedulerHeaderEl);
+        if (headerObserverRef.current) {
+          headerObserverRef.current.disconnect();
         }
       };
     }
