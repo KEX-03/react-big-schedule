@@ -156,7 +156,7 @@ function ResourceView({
 
   return (
     <div style={{ paddingBottom }}>
-      <table className="resource-table">
+      <table className="resource-table" role="grid" aria-multiselectable="true">
         <tbody>{resourceList}</tbody>
       </table>
     </div>

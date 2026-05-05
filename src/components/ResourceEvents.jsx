@@ -188,8 +188,8 @@ class ResourceEvents extends PureComponent {
         rightIndex,
         width,
         isSelecting: true,
-        startRowIndex: 0,
-        endRowIndex: 0,
+        startRowIndex: -1,
+        endRowIndex: -1,
       });
       this.emitSelectionChange(true, [], { left, width });
       return;
