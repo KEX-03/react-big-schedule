@@ -89,16 +89,18 @@ function AddMore() {
       )
     ) {
       let newFreshId = 0;
-      schedulerData.events.forEach(item => {
-        if (item.id >= newFreshId) newFreshId = item.id + 1;
+      schedulerData.events.forEach(existingEvent => {
+        if (existingEvent.id >= newFreshId) newFreshId = existingEvent.id + 1;
       });
+      const hasResourceIds = Array.isArray(item?.resourceIds) && item.resourceIds.length > 0;
 
       const newEvent = {
         id: newFreshId,
         title: 'New event you just created',
         start,
         end,
-        resourceId: slotId,
+        resourceId: hasResourceIds ? item.resourceIds[0] : slotId,
+        resourceIds: hasResourceIds ? item.resourceIds : [slotId],
         bgColor: 'purple',
       };
       schedulerData.addEvent(newEvent);

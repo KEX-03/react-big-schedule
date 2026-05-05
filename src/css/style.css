@@ -36,6 +36,8 @@
 .rbs {
   margin: 20px auto;
   border-spacing: 0;
+  --selection-bg: rgba(0, 123, 255, 0.1);
+  --selection-border: #007bff;
 }
 
 .rbs td {
@@ -196,6 +198,18 @@
 
 .rbs .selected-area {
   position: absolute;
+}
+
+.rbs .vertical-selection-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--selection-bg);
+  border: 2px dashed var(--selection-border);
+  pointer-events: none;
+  z-index: 10;
 }
 
 /* Slots and Cells */

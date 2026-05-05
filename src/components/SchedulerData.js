@@ -33,6 +33,7 @@ export default class SchedulerData {
     this.schedulerHeaderHeight = 0;
     this._shouldReloadViewType = false;
     this.version = 0;
+    this._batchCount = 0;
     this._versionChangeCallback = null;
 
     this.calendarPopoverLocale = undefined;
@@ -73,9 +74,33 @@ export default class SchedulerData {
     this._versionChangeCallback = typeof callback === 'function' ? callback : null;
   }
 
+  beginBatch() {
+    this._batchCount = (this._batchCount || 0) + 1;
+  }
+
+  endBatch() {
+    if (this._batchCount === undefined || this._batchCount <= 0) {
+      this._batchCount = 0;
+      console.warn('SchedulerData.endBatch called without a matching beginBatch');
+      return;
+    }
+    if (this._batchCount > 0) {
+      this._batchCount -= 1;
+      if (this._batchCount === 0 && this._pendingVersion !== undefined) {
+        if (typeof this._versionChangeCallback === 'function') {
+          this._versionChangeCallback(this._pendingVersion);
+        }
+        this._pendingVersion = undefined;
+      }
+    }
+  }
+
   bumpVersion() {
     this.version += 1;
-    if (typeof this._versionChangeCallback === 'function') {
+    if (this._batchCount > 0) {
+      // Defer callback until batch ends
+      this._pendingVersion = this.version;
+    } else if (typeof this._versionChangeCallback === 'function') {
       this._versionChangeCallback(this.version);
     }
   }
@@ -132,14 +157,16 @@ export default class SchedulerData {
   }
 
   setBesidesWidth(besidesWidth) {
-    if (besidesWidth >= 0) {
+    if (besidesWidth >= 0 && this.config.besidesWidth !== besidesWidth) {
       this.config.besidesWidth = besidesWidth;
+      this.bumpVersion();
     }
   }
 
   setUnderneathHeight(underneathHeight) {
-    if (underneathHeight >= 0) {
+    if (underneathHeight >= 0 && this.config.underneathHeight !== underneathHeight) {
       this.config.underneathHeight = underneathHeight;
+      this.bumpVersion();
     }
   }
 
@@ -172,6 +199,7 @@ export default class SchedulerData {
     });
     if (index !== -1) {
       this.eventGroups.splice(index, 1);
+      this._createRenderData();
       this.bumpVersion();
     }
   }
@@ -223,9 +251,25 @@ export default class SchedulerData {
   }
 
   setViewType(viewType = ViewType.Week, showAgenda = false, isEventPerspective = false) {
+    const previousShowAgenda = this.showAgenda;
+    const previousIsEventPerspective = this.isEventPerspective;
+
     this.showAgenda = showAgenda;
     this.isEventPerspective = isEventPerspective;
-    this.cellUnit = CellUnit.Day;
+
+    const isCustomView = viewType === ViewType.Custom || viewType === ViewType.Custom1 || viewType === ViewType.Custom2;
+
+    // Force built-in views only; custom views can provide their own cellUnit via custom date behavior.
+    if (viewType === ViewType.Day) {
+      this.cellUnit = CellUnit.Hour;
+    } else if (!isCustomView) {
+      this.cellUnit = CellUnit.Day;
+    }
+
+    // If showAgenda or isEventPerspective changed, force reload
+    if (previousShowAgenda !== showAgenda || previousIsEventPerspective !== isEventPerspective) {
+      this._shouldReloadViewType = true;
+    }
 
     if (this.viewType !== viewType || this._shouldReloadViewType) {
       let date = this.startDate;
@@ -294,7 +338,13 @@ export default class SchedulerData {
   }
 
   setSchedulerMaxHeight(newSchedulerMaxHeight) {
-    this.config.schedulerMaxHeight = newSchedulerMaxHeight;
+    if (newSchedulerMaxHeight < 0) {
+      return;
+    }
+    if (this.config.schedulerMaxHeight !== newSchedulerMaxHeight) {
+      this.config.schedulerMaxHeight = newSchedulerMaxHeight;
+      this.bumpVersion();
+    }
   }
 
   isSchedulerResponsive() {
@@ -305,6 +355,7 @@ export default class SchedulerData {
     let slotEntered = false;
     let slotIndent = -1;
     let isExpanded = false;
+    let changed = false;
     const expandedMap = new Map();
     this.renderData.forEach(item => {
       if (slotEntered === false) {
@@ -313,6 +364,7 @@ export default class SchedulerData {
 
           isExpanded = !item.expanded;
           item.expanded = isExpanded;
+          changed = true;
           slotIndent = item.indent;
           expandedMap.set(item.indent, {
             expanded: item.expanded,
@@ -321,7 +373,11 @@ export default class SchedulerData {
         }
       } else if (item.indent > slotIndent) {
         const expandStatus = expandedMap.get(item.indent - 1);
-        item.render = expandStatus.expanded && expandStatus.render;
+        const newRender = expandStatus.expanded && expandStatus.render;
+        if (item.render !== newRender) {
+          item.render = newRender;
+          changed = true;
+        }
 
         if (item.hasChildren) {
           expandedMap.set(item.indent, {
@@ -333,7 +389,9 @@ export default class SchedulerData {
         slotEntered = false;
       }
     });
-    this.bumpVersion();
+    if (changed) {
+      this.bumpVersion();
+    }
   }
 
   isResourceViewResponsive() {
@@ -921,7 +979,17 @@ export default class SchedulerData {
   }
 
   _getEventSlotId(event) {
-    return this.isEventPerspective ? this._getEventGroupId(event) : event.resourceId;
+    if (this.isEventPerspective) {
+      return this._getEventGroupId(event);
+    }
+    // Support for multi-resource events
+    if (event.resourceIds && event.resourceIds.length > 0) {
+      // For multi-resource events, return the first resourceId for backward compatibility
+      // The rendering logic will handle showing on multiple rows
+      return event.resourceIds[0];
+    }
+    // Fallback to single resourceId
+    return event.resourceId;
   }
 
   _getEventGroupId(event) {
@@ -1190,15 +1258,17 @@ export default class SchedulerData {
         console.error(`Event undefined: ${index}`);
         throw new Error(`Event undefined: ${index}`);
       }
+      const hasResourceTarget =
+        e.resourceId !== undefined || (Array.isArray(e.resourceIds) && e.resourceIds.length > 0);
       if (
         e.id === undefined ||
-        e.resourceId === undefined ||
+        !hasResourceTarget ||
         e.title === undefined ||
         e.start === undefined ||
         e.end === undefined
       ) {
-        console.error('Event property missed', index, e);
-        throw new Error(`Event property undefined: ${index}`);
+        console.error('Event property missed (id, resourceId/resourceIds, title, start, end)', index, e);
+        throw new Error(`Event property undefined (id/resourceId|resourceIds/title/start/end): ${index}`);
       }
     });
   }
@@ -1236,48 +1306,62 @@ export default class SchedulerData {
     const cellMaxEventsCountValue = 30;
 
     this.events.forEach(item => {
-      const resourceEventsList = initRenderData.filter(x => x.slotId === this._getEventSlotId(item));
-      if (resourceEventsList.length > 0) {
-        const resourceEvents = resourceEventsList[0];
-        const span = this._getSpan(item.start, item.end, this.headers);
-        const eventStart = new Date(item.start);
-        const eventEnd = new Date(item.end);
-        let pos = -1;
+      let targetSlotIds = [];
 
-        resourceEvents.headerItems.forEach((header, index) => {
-          const headerStart = new Date(header.start);
-          const headerEnd = new Date(header.end);
-          if (headerEnd > eventStart && headerStart < eventEnd) {
-            header.count += 1;
-            if (header.count > resourceEvents.rowMaxCount) {
-              resourceEvents.rowMaxCount = header.count;
-              const rowsCount =
-                cellMaxEventsCount <= cellMaxEventsCountValue && resourceEvents.rowMaxCount > cellMaxEventsCount
-                  ? cellMaxEventsCount
-                  : resourceEvents.rowMaxCount;
-              const newRowHeight =
-                rowsCount * this.config.eventItemLineHeight +
-                (this.config.creatable && this.config.checkConflict === false ? 20 : 2);
-              if (newRowHeight > resourceEvents.rowHeight) resourceEvents.rowHeight = newRowHeight;
-            }
-
-            if (pos === -1) {
-              let tmp = 0;
-              while (header.events[tmp] !== undefined) tmp += 1;
-
-              pos = tmp;
-            }
-            let render = headerStart <= eventStart || index === 0;
-            if (render === false) {
-              const previousHeader = resourceEvents.headerItems[index - 1];
-              const previousHeaderStart = new Date(previousHeader.start);
-              const previousHeaderEnd = new Date(previousHeader.end);
-              if (previousHeaderEnd <= eventStart || previousHeaderStart >= eventEnd) render = true;
-            }
-            header.events[pos] = this._createHeaderEvent(render, span, item);
-          }
-        });
+      if (this.isEventPerspective) {
+        targetSlotIds = [this._getEventSlotId(item)];
+      } else if (item.resourceIds && item.resourceIds.length > 0) {
+        // Multi-resource event
+        targetSlotIds = item.resourceIds;
+      } else if (item.resourceId) {
+        // Single resource event (backward compatibility)
+        targetSlotIds = [item.resourceId];
       }
+
+      targetSlotIds.forEach(slotId => {
+        const resourceEventsList = initRenderData.filter(x => x.slotId === slotId);
+        if (resourceEventsList.length > 0) {
+          const resourceEvents = resourceEventsList[0];
+          const span = this._getSpan(item.start, item.end, this.headers);
+          const eventStart = new Date(item.start);
+          const eventEnd = new Date(item.end);
+          let pos = -1;
+
+          resourceEvents.headerItems.forEach((header, index) => {
+            const headerStart = new Date(header.start);
+            const headerEnd = new Date(header.end);
+            if (headerEnd > eventStart && headerStart < eventEnd) {
+              header.count += 1;
+              if (header.count > resourceEvents.rowMaxCount) {
+                resourceEvents.rowMaxCount = header.count;
+                const rowsCount =
+                  cellMaxEventsCount <= cellMaxEventsCountValue && resourceEvents.rowMaxCount > cellMaxEventsCount
+                    ? cellMaxEventsCount
+                    : resourceEvents.rowMaxCount;
+                const newRowHeight =
+                  rowsCount * this.config.eventItemLineHeight +
+                  (this.config.creatable && this.config.checkConflict === false ? 20 : 2);
+                if (newRowHeight > resourceEvents.rowHeight) resourceEvents.rowHeight = newRowHeight;
+              }
+
+              if (pos === -1) {
+                let tmp = 0;
+                while (header.events[tmp] !== undefined) tmp += 1;
+
+                pos = tmp;
+              }
+              let render = headerStart <= eventStart || index === 0;
+              if (render === false) {
+                const previousHeader = resourceEvents.headerItems[index - 1];
+                const previousHeaderStart = new Date(previousHeader.start);
+                const previousHeaderEnd = new Date(previousHeader.end);
+                if (previousHeaderEnd <= eventStart || previousHeaderStart >= eventEnd) render = true;
+              }
+              header.events[pos] = this._createHeaderEvent(render, span, item);
+            }
+          });
+        }
+      });
     });
 
     if (cellMaxEventsCount <= cellMaxEventsCountValue || this.behaviors.getSummaryFunc !== undefined) {

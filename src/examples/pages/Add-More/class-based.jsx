@@ -125,16 +125,19 @@ class AddMore extends Component {
       )
     ) {
       let newFreshId = 0;
-      schedulerData.events.forEach(item => {
-        if (item.id >= newFreshId) newFreshId = item.id + 1;
+      schedulerData.events.forEach(existingEvent => {
+        if (existingEvent.id >= newFreshId) newFreshId = existingEvent.id + 1;
       });
+      const selectedResourceIds =
+        Array.isArray(item?.resourceIds) && item.resourceIds.length > 0 ? item.resourceIds : [slotId];
 
       let newEvent = {
         id: newFreshId,
         title: 'New event you just created',
-        start: start,
-        end: end,
-        resourceId: slotId,
+        start,
+        end,
+        resourceId: selectedResourceIds[0],
+        resourceIds: selectedResourceIds,
         bgColor: 'purple',
       };
       schedulerData.addEvent(newEvent);

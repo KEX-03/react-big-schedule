@@ -125,16 +125,41 @@ function Scheduler(props) {
   const [contentScrollbarWidth, setContentScrollbarWidth] = useState(17);
   const [resourceScrollbarHeight, setResourceScrollbarHeight] = useState(17);
   const [resourceScrollbarWidth, setResourceScrollbarWidth] = useState(17);
+  const [selectionState, setSelectionState] = useState({
+    isSelecting: false,
+    selectedResourceIds: [],
+    left: 0,
+    width: 0,
+  });
   const [, setRenderTrigger] = useState(0);
+
+  // Callback ref pattern for ResizeObserver to handle parent element reassignment
+  const [parentEl, setParentEl] = useState(null);
+  const setParentRef = useCallback(
+    el => {
+      if (parentRef) {
+        parentRef.current = el;
+      }
+      setParentEl(el);
+    },
+    [parentRef]
+  );
+
+  // Layout/header refs - declare before setSchedulerHeaderRef useCallback
+  const schedulerHeaderRef = useRef(null);
+
+  // Callback ref pattern for ResizeObserver to handle schedulerHeader element reassignment
+  const [schedulerHeaderEl, setSchedulerHeaderEl] = useState(null);
+  const setSchedulerHeaderRef = useCallback(el => {
+    schedulerHeaderRef.current = el;
+    setSchedulerHeaderEl(el);
+  }, []);
 
   // Scroll sync refs
   const schedulerHeadRef = useRef(null);
   const schedulerResourceRef = useRef(null);
   const schedulerContentRef = useRef(null);
   const schedulerContentBgTableRef = useRef(null);
-
-  // Layout/header refs
-  const schedulerHeaderRef = useRef(null);
 
   // Observer refs
   const ulObserverRef = useRef(null);
@@ -178,30 +203,35 @@ function Scheduler(props) {
   }, [schedulerData, parentRef, onWindowResize]);
 
   useEffect(() => {
-    if (parentRef !== undefined && schedulerData.config.responsiveByParent && !!parentRef.current) {
-      schedulerData._setDocumentWidth(parentRef.current.offsetWidth);
+    if (parentRef !== undefined && schedulerData.config.responsiveByParent && !!parentEl) {
+      schedulerData._setDocumentWidth(parentEl.offsetWidth);
+
+      // Disconnect any previous observer to prevent memory leaks
+      if (ulObserverRef.current) {
+        ulObserverRef.current.disconnect();
+      }
 
       ulObserverRef.current = new ResizeObserver(() => {
-        if (parentRef.current) {
-          schedulerData._setDocumentWidth(parentRef.current.offsetWidth);
-          schedulerData._setDocumentHeight(parentRef.current.offsetHeight);
+        if (parentEl) {
+          schedulerData._setDocumentWidth(parentEl.offsetWidth);
+          schedulerData._setDocumentHeight(parentEl.offsetHeight);
         }
       });
 
-      ulObserverRef.current.observe(parentRef.current);
+      ulObserverRef.current.observe(parentEl);
 
       return () => {
-        if (ulObserverRef.current && parentRef.current) {
-          ulObserverRef.current.unobserve(parentRef.current);
+        if (ulObserverRef.current) {
+          ulObserverRef.current.disconnect();
         }
       };
     }
-  }, [parentRef, schedulerData]);
+  }, [parentEl, parentRef, schedulerData]);
 
   useEffect(() => {
-    if (schedulerData.config.responsiveByParent && !!schedulerHeaderRef.current) {
-      schedulerData._setDocumentWidth(schedulerHeaderRef.current.offsetWidth);
-      schedulerData._setDocumentHeight(schedulerHeaderRef.current.offsetHeight);
+    if (schedulerData.config.responsiveByParent && !!schedulerHeaderEl) {
+      schedulerData._setDocumentWidth(schedulerHeaderEl.offsetWidth);
+      schedulerData._setDocumentHeight(schedulerHeaderEl.offsetHeight);
 
       headerObserverRef.current = new ResizeObserver(entries => {
         entries.forEach(entry => {
@@ -213,15 +243,15 @@ function Scheduler(props) {
         });
       });
 
-      headerObserverRef.current.observe(schedulerHeaderRef.current);
+      headerObserverRef.current.observe(schedulerHeaderEl);
 
       return () => {
-        if (headerObserverRef.current && schedulerHeaderRef.current) {
-          headerObserverRef.current.unobserve(schedulerHeaderRef.current);
+        if (headerObserverRef.current && schedulerHeaderEl) {
+          headerObserverRef.current.unobserve(schedulerHeaderEl);
         }
       };
     }
-  }, [schedulerHeaderRef, schedulerData]);
+  }, [schedulerHeaderEl, schedulerData]);
 
   const resolveScrollbarSize = useCallback(() => {
     const prev = scrollbarSizeRef.current;
@@ -410,6 +440,33 @@ function Scheduler(props) {
 
   const displayRenderData = useMemo(() => renderData.filter(o => o.render), [renderData]);
   const eventDndSource = dndContext.getDndSource();
+  const handleSelectionChange = useCallback((isSelecting, selectedResourceIds, preview = {}) => {
+    const nextSelectedResourceIds = selectedResourceIds || [];
+    const nextLeft = preview.left || 0;
+    const nextWidth = preview.width || 0;
+    setSelectionState(prev => {
+      const sameIdsLength = prev.selectedResourceIds.length === nextSelectedResourceIds.length;
+      const sameIds =
+        sameIdsLength && prev.selectedResourceIds.every((id, index) => id === nextSelectedResourceIds[index]);
+      if (prev.isSelecting === isSelecting && prev.left === nextLeft && prev.width === nextWidth && sameIds) {
+        return prev;
+      }
+      return {
+        isSelecting,
+        selectedResourceIds: nextSelectedResourceIds,
+        left: nextLeft,
+        width: nextWidth,
+      };
+    });
+  }, []);
+  const selectionPreview = useMemo(
+    () => ({ isSelecting: selectionState.isSelecting, left: selectionState.left, width: selectionState.width }),
+    [selectionState.isSelecting, selectionState.left, selectionState.width]
+  );
+  const selectedIdsSet = useMemo(
+    () => new Set(selectionState.selectedResourceIds),
+    [selectionState.selectedResourceIds]
+  );
   const resourceEventsList = useMemo(
     () =>
       displayRenderData.map(item => (
@@ -434,6 +491,9 @@ function Scheduler(props) {
           viewEvent2Text={props.viewEvent2Text}
           newEvent={props.newEvent}
           eventItemTemplateResolver={props.eventItemTemplateResolver}
+          onSelectionChange={handleSelectionChange}
+          isRowSelected={selectedIdsSet.has(item.slotId)}
+          selectionPreview={selectionPreview}
         />
       )),
     [
@@ -456,6 +516,9 @@ function Scheduler(props) {
       props.viewEvent2Text,
       props.newEvent,
       props.eventItemTemplateResolver,
+      handleSelectionChange,
+      selectedIdsSet,
+      selectionPreview,
     ]
   );
 
@@ -479,7 +542,6 @@ function Scheduler(props) {
   } else {
     const resourceTableWidth = schedulerData.getResourceTableWidth();
     const schedulerContainerWidth = width - (config.resourceViewEnabled ? resourceTableWidth : 0);
-    const schedulerWidth = schedulerData.getContentTableWidth() - 1;
 
     const contentHeight = config.schedulerContentHeight;
     const resourcePaddingBottom = resourceScrollbarHeight === 0 ? contentScrollbarHeight : 0;
@@ -591,6 +653,8 @@ function Scheduler(props) {
                 slotItemTemplateResolver={props.slotItemTemplateResolver}
                 toggleExpandFunc={props.toggleExpandFunc}
                 CustomResourceCell={props.CustomResourceCell}
+                isSelecting={selectionState.isSelecting}
+                selectedResourceIds={selectionState.selectedResourceIds}
               />
             </div>
           </div>
@@ -658,7 +722,7 @@ function Scheduler(props) {
   const schedulerHeader = useMemo(
     () => (
       <SchedulerHeader
-        ref={schedulerHeaderRef}
+        ref={setSchedulerHeaderRef}
         style={schedulerHeaderStyle}
         onViewChange={handleViewChange}
         schedulerData={schedulerData}
@@ -684,7 +748,7 @@ function Scheduler(props) {
   const rootTableStyle = useMemo(() => ({ width: `${width}px` }), [width]);
 
   return (
-    <table id="rbs-root" className="rbs" style={rootTableStyle}>
+    <table id="rbs-root" className="rbs" style={rootTableStyle} ref={setParentRef}>
       <thead>
         <tr>
           <td colSpan="2">{schedulerHeader}</td>

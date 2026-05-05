@@ -26,6 +26,8 @@ function ResourceView({
   slotItemTemplateResolver,
   toggleExpandFunc,
   CustomResourceCell,
+  isSelecting,
+  selectedResourceIds,
 }) {
   const { renderData } = schedulerData;
   const width = schedulerData.getResourceTableWidth() - 2;
@@ -56,7 +58,20 @@ function ResourceView({
     const tdStyle = {
       height: item.rowHeight,
       backgroundColor: item.groupOnly ? schedulerData.config.groupOnlySlotColor : undefined,
+      borderLeft: '3px solid transparent',
     };
+    const selectedBorderColor = schedulerData.config.selectedSlotBorderColor || '#1677ff';
+    const selectedShadowColor = schedulerData.config.selectedSlotShadowColor || '#91caff';
+    const selectedSlotColor = schedulerData.config.selectedSlotColor || '#e6f4ff';
+    const isRowSelected =
+      isSelecting && Array.isArray(selectedResourceIds) && selectedResourceIds.includes(item.slotId);
+    if (isRowSelected) {
+      tdStyle.borderLeft = `3px solid ${selectedBorderColor}`;
+      tdStyle.boxShadow = `inset 0 0 0 1px ${selectedShadowColor}`;
+      if (!item.groupOnly) {
+        tdStyle.backgroundColor = selectedSlotColor;
+      }
+    }
 
     if (CustomResourceCell) {
       return (
@@ -153,6 +168,8 @@ ResourceView.propTypes = {
   slotItemTemplateResolver: PropTypes.func,
   toggleExpandFunc: PropTypes.func,
   CustomResourceCell: PropTypes.func,
+  isSelecting: PropTypes.bool,
+  selectedResourceIds: PropTypes.arrayOf(PropTypes.oneOfType([PropTypes.string, PropTypes.number])),
 };
 
 export default React.memo(ResourceView);

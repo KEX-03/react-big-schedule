@@ -28,6 +28,9 @@ class ResourceEvents extends PureComponent {
     viewEvent2Text: PropTypes.string,
     newEvent: PropTypes.func,
     eventItemTemplateResolver: PropTypes.func,
+    onSelectionChange: PropTypes.func,
+    isRowSelected: PropTypes.bool,
+    selectionPreview: PropTypes.object,
   };
 
   constructor(props) {
@@ -37,6 +40,11 @@ class ResourceEvents extends PureComponent {
       isSelecting: false,
       left: 0,
       width: 0,
+
+      // Add vertical selection tracking
+      originalStartRowIndex: -1,
+      startRowIndex: -1,
+      endRowIndex: -1,
     };
     this.supportTouch = false; // 'ontouchstart' in window;
   }
@@ -52,14 +60,31 @@ class ResourceEvents extends PureComponent {
   }
 
   componentDidUpdate(prevProps) {
-    if (prevProps !== this.props) {
-      const { schedulerData } = this.props;
+    const prevCreatable = prevProps.schedulerData?.config?.creatable;
+    const currentCreatable = this.props.schedulerData?.config?.creatable;
+    if (prevCreatable !== currentCreatable) {
       this.supportTouchHelper('remove');
-      if (schedulerData.config.creatable) {
+      if (currentCreatable) {
         this.supportTouchHelper();
       }
     }
   }
+
+  componentWillUnmount() {
+    this.cleanupDragInteraction();
+    this.supportTouchHelper('remove');
+    this.emitSelectionChange(false, []);
+  }
+
+  cleanupDragInteraction = () => {
+    document.documentElement.removeEventListener('touchmove', this.doDrag, false);
+    document.documentElement.removeEventListener('touchend', this.stopDrag, false);
+    document.documentElement.removeEventListener('touchcancel', this.cancelDrag, false);
+    document.documentElement.removeEventListener('mousemove', this.doDrag, false);
+    document.documentElement.removeEventListener('mouseup', this.stopDrag, false);
+    document.onselectstart = null;
+    document.ondragstart = null;
+  };
 
   supportTouchHelper = (evType = 'add') => {
     const ev = evType === 'add' ? this.eventContainer.addEventListener : this.eventContainer.removeEventListener;
@@ -94,7 +119,21 @@ class ResourceEvents extends PureComponent {
     const rightIndex = Math.ceil(startX / cellWidth);
     const width = (rightIndex - leftIndex) * cellWidth;
 
-    this.setState({ startX, left, leftIndex, width, rightIndex, isSelecting: true });
+    // Get the row index of this resource
+    const startRowIndex = this.getResourceRowIndex(resourceEvents.slotId);
+
+    this.setState({
+      startX,
+      left,
+      leftIndex,
+      width,
+      rightIndex,
+      isSelecting: true,
+      originalStartRowIndex: startRowIndex,
+      startRowIndex,
+      endRowIndex: startRowIndex, // Initially same as start
+    });
+    this.emitSelectionChange(true, this.getSelectedResourceIds(startRowIndex, startRowIndex), { left, width });
 
     if (this.supportTouch) {
       document.documentElement.addEventListener('touchmove', this.doDrag, false);
@@ -116,7 +155,7 @@ class ResourceEvents extends PureComponent {
     if (toReturn) {
       return;
     }
-    const { startX } = this.state;
+    const { startX, originalStartRowIndex } = this.state;
     const { schedulerData } = this.props;
     const { headers } = schedulerData;
     const cellWidth = schedulerData.getContentCellWidth();
@@ -129,7 +168,47 @@ class ResourceEvents extends PureComponent {
     rightIndex = rightIndex > headers.length ? headers.length : rightIndex;
     const width = (rightIndex - leftIndex) * cellWidth;
 
-    this.setState({ leftIndex, left, rightIndex, width, isSelecting: true });
+    // Calculate current row based on per-row heights (not a uniform row height assumption).
+    let clientY = ev.clientY;
+    if (this.supportTouch && ev.changedTouches && ev.changedTouches.length > 0) {
+      clientY = ev.changedTouches[0].clientY;
+    }
+    const currentY = clientY - pos.y;
+    const displayRenderData = this.getDisplayRenderData();
+    const rowHeights = displayRenderData.map(row => row?.rowHeight || 50);
+    const startRowTop = rowHeights.slice(0, Math.max(0, originalStartRowIndex)).reduce((sum, h) => sum + h, 0);
+    const absoluteY = startRowTop + currentY;
+
+    let cumulativeHeight = 0;
+    let currentRowIndex = rowHeights.length - 1;
+    for (let i = 0; i < rowHeights.length; i += 1) {
+      cumulativeHeight += rowHeights[i];
+      if (absoluteY < cumulativeHeight) {
+        currentRowIndex = i;
+        break;
+      }
+    }
+    if (absoluteY < 0) {
+      currentRowIndex = 0;
+    }
+
+    const minRowIndex = Math.min(originalStartRowIndex, currentRowIndex);
+    const maxRowIndex = Math.max(originalStartRowIndex, currentRowIndex);
+
+    // Clamp to valid row indices
+    const clampedMinRow = Math.max(0, minRowIndex);
+    const clampedMaxRow = Math.min(displayRenderData.length - 1, maxRowIndex);
+
+    this.setState({
+      leftIndex,
+      left,
+      rightIndex,
+      width,
+      isSelecting: true,
+      startRowIndex: clampedMinRow,
+      endRowIndex: clampedMaxRow,
+    });
+    this.emitSelectionChange(true, this.getSelectedResourceIds(clampedMinRow, clampedMaxRow), { left, width });
   };
 
   dragHelper = (ev, dragType) => {
@@ -148,33 +227,50 @@ class ResourceEvents extends PureComponent {
   };
 
   stopDrag = ev => {
-    ev.stopPropagation();
+    if (ev?.stopPropagation) ev.stopPropagation();
 
     const { schedulerData, newEvent, resourceEvents } = this.props;
     const { headers, events, config, cellUnit, localeDayjs } = schedulerData;
     const { leftIndex, rightIndex } = this.state;
-    if (this.supportTouch) {
-      document.documentElement.removeEventListener('touchmove', this.doDrag, false);
-      document.documentElement.removeEventListener('touchend', this.stopDrag, false);
-      document.documentElement.removeEventListener('touchcancel', this.cancelDrag, false);
-    } else {
-      document.documentElement.removeEventListener('mousemove', this.doDrag, false);
-      document.documentElement.removeEventListener('mouseup', this.stopDrag, false);
-    }
-    document.onselectstart = null;
-    document.ondragstart = null;
+    this.cleanupDragInteraction();
 
-    const startTime = headers[leftIndex].time;
-    let endTime = resourceEvents.headerItems[rightIndex - 1].end;
+    if (headers.length === 0 || !resourceEvents.headerItems || resourceEvents.headerItems.length === 0) {
+      this.setState({
+        startX: 0,
+        leftIndex: 0,
+        left: 0,
+        rightIndex: 0,
+        width: 0,
+        isSelecting: false,
+        originalStartRowIndex: -1,
+        startRowIndex: -1,
+        endRowIndex: -1,
+      });
+      this.emitSelectionChange(false, [], { left: 0, width: 0 });
+      return;
+    }
+
+    const maxLeftIndex = headers.length - 1;
+    const safeLeftIndex = Math.max(0, Math.min(leftIndex, maxLeftIndex));
+    const maxRightIndex = Math.min(headers.length, resourceEvents.headerItems.length);
+    let safeRightIndex = Math.max(1, rightIndex, safeLeftIndex + 1);
+    safeRightIndex = Math.min(safeRightIndex, maxRightIndex);
+
+    const startTime = headers[safeLeftIndex].time;
+    let endTime = resourceEvents.headerItems[safeRightIndex - 1].end;
     if (cellUnit !== CellUnit.Hour) {
-      endTime = localeDayjs(new Date(resourceEvents.headerItems[rightIndex - 1].start))
+      endTime = localeDayjs(new Date(resourceEvents.headerItems[safeRightIndex - 1].start))
         .hour(23)
         .minute(59)
         .second(59)
         .format(DATETIME_FORMAT);
     }
-    const { slotId } = resourceEvents;
-    const { slotName } = resourceEvents;
+
+    // Get selected resource IDs
+    const selectedResourceIds = this.getSelectedResourceIds();
+    const slotId = selectedResourceIds.length > 0 ? selectedResourceIds[0] : resourceEvents.slotId;
+    const slotName =
+      selectedResourceIds.length > 0 ? schedulerData.getResourceById(slotId)?.name || slotId : resourceEvents.slotName;
 
     this.setState({
       startX: 0,
@@ -183,7 +279,11 @@ class ResourceEvents extends PureComponent {
       rightIndex: 0,
       width: 0,
       isSelecting: false,
+      originalStartRowIndex: -1,
+      startRowIndex: -1,
+      endRowIndex: -1,
     });
+    this.emitSelectionChange(false, [], { left: 0, width: 0 });
 
     let hasConflict = false;
     if (config.checkConflict) {
@@ -191,7 +291,10 @@ class ResourceEvents extends PureComponent {
       const end = localeDayjs(endTime);
 
       events.forEach(e => {
-        if (schedulerData._getEventSlotId(e) === slotId) {
+        const eventResourceIds = e.resourceIds || [e.resourceId];
+        const hasOverlap = selectedResourceIds.some(selectedId => eventResourceIds.includes(selectedId));
+
+        if (hasOverlap) {
           const eStart = localeDayjs(e.start);
           const eEnd = localeDayjs(e.end);
           if (
@@ -215,6 +318,8 @@ class ResourceEvents extends PureComponent {
             id: undefined,
             start: startTime,
             end: endTime,
+            resourceId: slotId, // Keep for backward compatibility
+            resourceIds: selectedResourceIds, // Add multi-resource support
             slotId,
             slotName,
             title: undefined,
@@ -228,19 +333,20 @@ class ResourceEvents extends PureComponent {
       } else {
         console.log('Conflict occurred, set conflictOccurred func in Scheduler to handle it');
       }
-    } else if (newEvent !== undefined) newEvent(schedulerData, slotId, slotName, startTime, endTime);
+    } else if (newEvent !== undefined) {
+      // Pass resourceIds for multi-resource events
+      newEvent(schedulerData, slotId, slotName, startTime, endTime, undefined, {
+        resourceIds: selectedResourceIds.length > 1 ? selectedResourceIds : undefined,
+      });
+    }
   };
 
   cancelDrag = ev => {
-    ev.stopPropagation();
+    if (ev?.stopPropagation) ev.stopPropagation();
 
     const { isSelecting } = this.state;
     if (isSelecting) {
-      document.documentElement.removeEventListener('touchmove', this.doDrag, false);
-      document.documentElement.removeEventListener('touchend', this.stopDrag, false);
-      document.documentElement.removeEventListener('touchcancel', this.cancelDrag, false);
-      document.onselectstart = null;
-      document.ondragstart = null;
+      this.cleanupDragInteraction();
       this.setState({
         startX: 0,
         leftIndex: 0,
@@ -248,7 +354,18 @@ class ResourceEvents extends PureComponent {
         rightIndex: 0,
         width: 0,
         isSelecting: false,
+        originalStartRowIndex: -1,
+        startRowIndex: -1,
+        endRowIndex: -1,
       });
+      this.emitSelectionChange(false, [], { left: 0, width: 0 });
+    }
+  };
+
+  emitSelectionChange = (isSelecting, selectedResourceIds, preview = {}) => {
+    const { onSelectionChange } = this.props;
+    if (onSelectionChange) {
+      onSelectionChange(isSelecting, selectedResourceIds, preview);
     }
   };
 
@@ -284,10 +401,40 @@ class ResourceEvents extends PureComponent {
     }
   };
 
+  getResourceRowIndex = slotId => {
+    return this.getDisplayRenderData().findIndex(row => row.slotId === slotId);
+  };
+
+  getDisplayRenderData = () => {
+    const { schedulerData } = this.props;
+    return schedulerData.renderData.filter(row => row.render);
+  };
+
+  getSelectedResourceIds = (startOverride, endOverride) => {
+    const { startRowIndex, endRowIndex } = this.state;
+    const displayRenderData = this.getDisplayRenderData();
+    const from = startOverride !== undefined ? startOverride : startRowIndex;
+    const to = endOverride !== undefined ? endOverride : endRowIndex;
+
+    if (from === -1 || to === -1) {
+      return [];
+    }
+
+    const selectedResourceIds = [];
+    for (let i = from; i <= to; i++) {
+      const row = displayRenderData[i];
+      if (row && !row.groupOnly) {
+        selectedResourceIds.push(row.slotId);
+      }
+    }
+
+    return selectedResourceIds;
+  };
+
   render() {
     const { resourceEvents, schedulerData, dndSource } = this.props;
     const { cellUnit, startDate, endDate, config, localeDayjs } = schedulerData;
-    const { isSelecting, left, width } = this.state;
+    const { isSelecting, left, width, startRowIndex, endRowIndex } = this.state;
     const cellWidth = schedulerData.getContentCellWidth();
     const cellMaxEvents = schedulerData.getCellMaxEvents();
     const rowWidth = schedulerData.getContentTableWidth();
@@ -297,6 +444,19 @@ class ResourceEvents extends PureComponent {
     ) : (
       <div />
     );
+
+    const sharedSelecting = this.props.selectionPreview?.isSelecting;
+    const isSharedSelectedRow = sharedSelecting && this.props.isRowSelected;
+    const sharedLeft = this.props.selectionPreview?.left || 0;
+    const sharedWidth = this.props.selectionPreview?.width || 0;
+    const sharedSelectedArea =
+      !isSelecting && isSharedSelectedRow ? (
+        <SelectedArea schedulerData={schedulerData} left={sharedLeft} width={sharedWidth} />
+      ) : null;
+
+    // Add vertical selection overlay
+    const verticalSelectionOverlay =
+      isSelecting && startRowIndex !== endRowIndex ? <div className="vertical-selection-overlay" /> : null;
 
     const eventList = [];
     resourceEvents.headerItems.forEach((headerItem, index) => {
@@ -363,8 +523,10 @@ class ResourceEvents extends PureComponent {
             }
 
             const top = marginTop + idx * config.eventItemLineHeight;
+            const eventKey = `${evt.eventItem.id}_${resourceEvents.slotId}_${index}`;
             const eventItem = (
               <EventItem
+                key={eventKey}
                 schedulerData={schedulerData}
                 eventItem={evt.eventItem}
                 dndSource={dndSource}
@@ -407,8 +569,6 @@ class ResourceEvents extends PureComponent {
               width={width}
               top={top}
               clickAction={this.onAddMoreClick}
-              // Any specific AddMore requirements
-              onSetAddMoreState={this.props.onSetAddMoreState}
             />
           );
           eventList.push(addMoreItem);
@@ -437,6 +597,8 @@ class ResourceEvents extends PureComponent {
     const eventContainer = (
       <div ref={this.eventContainerRef} className="event-container" style={{ height: resourceEvents.rowHeight }}>
         {selectedArea}
+        {sharedSelectedArea}
+        {verticalSelectionOverlay}
         {eventList}
       </div>
     );
@@ -453,6 +615,12 @@ const ResourceEventsWithDnD = props => {
   const { schedulerData, dndContext } = props;
   const { config } = schedulerData;
   const componentRef = React.useRef(null);
+  const propsRef = React.useRef(props);
+
+  // Keep propsRef up to date
+  React.useEffect(() => {
+    propsRef.current = props;
+  }, [props]);
 
   // Always call useDrop unconditionally (Rules of Hooks)
   // Disable functionality when drag and drop is not enabled
@@ -468,19 +636,19 @@ const ResourceEventsWithDnD = props => {
     const spec = dndContext.getDropSpec();
     return {
       accept: [...dndContext.sourceMap.keys()],
-      drop: (item, monitor) => spec.drop(props, monitor, componentRef.current),
-      hover: (item, monitor) => spec.hover(props, monitor, componentRef.current),
-      canDrop: (item, monitor) => spec.canDrop(props, monitor),
+      drop: (item, monitor) => spec.drop(propsRef.current, monitor, componentRef.current),
+      hover: (item, monitor) => spec.hover(propsRef.current, monitor, componentRef.current),
+      canDrop: (item, monitor) => spec.canDrop(propsRef.current, monitor),
       collect: monitor => ({
         isOver: monitor.isOver(),
         canDrop: monitor.canDrop(),
       }),
     };
-  }, [props, dndContext, config.dragAndDropEnabled]);
+  }, [dndContext, config.dragAndDropEnabled]);
 
   return <ResourceEvents ref={componentRef} {...props} dropRef={dropRef} isOver={isOver} canDrop={canDrop} />;
 };
 
 ResourceEventsWithDnD.displayName = 'ResourceEventsWithDnD';
 
-export default ResourceEventsWithDnD;
+export default React.memo(ResourceEventsWithDnD);
