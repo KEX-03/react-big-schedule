@@ -33,6 +33,7 @@ export default class SchedulerData {
     this.schedulerHeaderHeight = 0;
     this._shouldReloadViewType = false;
     this.version = 0;
+    this._batchCount = 0;
     this._versionChangeCallback = null;
 
     this.calendarPopoverLocale = undefined;
@@ -78,6 +79,11 @@ export default class SchedulerData {
   }
 
   endBatch() {
+    if (this._batchCount === undefined || this._batchCount <= 0) {
+      this._batchCount = 0;
+      console.warn('SchedulerData.endBatch called without a matching beginBatch');
+      return;
+    }
     if (this._batchCount > 0) {
       this._batchCount -= 1;
       if (this._batchCount === 0 && this._pendingVersion !== undefined) {
@@ -1302,7 +1308,9 @@ export default class SchedulerData {
     this.events.forEach(item => {
       let targetSlotIds = [];
 
-      if (item.resourceIds && item.resourceIds.length > 0) {
+      if (this.isEventPerspective) {
+        targetSlotIds = [this._getEventSlotId(item)];
+      } else if (item.resourceIds && item.resourceIds.length > 0) {
         // Multi-resource event
         targetSlotIds = item.resourceIds;
       } else if (item.resourceId) {

@@ -71,15 +71,9 @@ class ResourceEvents extends PureComponent {
   }
 
   componentWillUnmount() {
-    const { isSelecting } = this.state;
-    if (isSelecting) {
-      this.emitSelectionChange(false, []);
-    }
     this.cleanupDragInteraction();
     this.supportTouchHelper('remove');
-    if (!isSelecting) {
-      this.emitSelectionChange(false, []);
-    }
+    this.emitSelectionChange(false, []);
   }
 
   cleanupDragInteraction = () => {
@@ -177,7 +171,7 @@ class ResourceEvents extends PureComponent {
     // Calculate current row based on per-row heights (not a uniform row height assumption).
     let clientY = ev.clientY;
     if (this.supportTouch && ev.changedTouches && ev.changedTouches.length > 0) {
-      clientY = ev.changedTouches[0].pageY;
+      clientY = ev.changedTouches[0].clientY;
     }
     const currentY = clientY - pos.y;
     const displayRenderData = this.getDisplayRenderData();
@@ -240,10 +234,32 @@ class ResourceEvents extends PureComponent {
     const { leftIndex, rightIndex } = this.state;
     this.cleanupDragInteraction();
 
-    const startTime = headers[leftIndex].time;
-    let endTime = resourceEvents.headerItems[rightIndex - 1].end;
+    if (headers.length === 0 || !resourceEvents.headerItems || resourceEvents.headerItems.length === 0) {
+      this.setState({
+        startX: 0,
+        leftIndex: 0,
+        left: 0,
+        rightIndex: 0,
+        width: 0,
+        isSelecting: false,
+        originalStartRowIndex: -1,
+        startRowIndex: -1,
+        endRowIndex: -1,
+      });
+      this.emitSelectionChange(false, [], { left: 0, width: 0 });
+      return;
+    }
+
+    const maxLeftIndex = headers.length - 1;
+    const safeLeftIndex = Math.max(0, Math.min(leftIndex, maxLeftIndex));
+    const maxRightIndex = Math.min(headers.length, resourceEvents.headerItems.length);
+    let safeRightIndex = Math.max(1, rightIndex, safeLeftIndex + 1);
+    safeRightIndex = Math.min(safeRightIndex, maxRightIndex);
+
+    const startTime = headers[safeLeftIndex].time;
+    let endTime = resourceEvents.headerItems[safeRightIndex - 1].end;
     if (cellUnit !== CellUnit.Hour) {
-      endTime = localeDayjs(new Date(resourceEvents.headerItems[rightIndex - 1].start))
+      endTime = localeDayjs(new Date(resourceEvents.headerItems[safeRightIndex - 1].start))
         .hour(23)
         .minute(59)
         .second(59)
@@ -440,21 +456,7 @@ class ResourceEvents extends PureComponent {
 
     // Add vertical selection overlay
     const verticalSelectionOverlay =
-      isSelecting && startRowIndex !== endRowIndex ? (
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            backgroundColor: 'rgba(0, 123, 255, 0.1)',
-            border: '2px dashed #007bff',
-            pointerEvents: 'none',
-            zIndex: 10,
-          }}
-        />
-      ) : null;
+      isSelecting && startRowIndex !== endRowIndex ? <div className="vertical-selection-overlay" /> : null;
 
     const eventList = [];
     resourceEvents.headerItems.forEach((headerItem, index) => {

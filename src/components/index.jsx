@@ -150,13 +150,10 @@ function Scheduler(props) {
 
   // Callback ref pattern for ResizeObserver to handle schedulerHeader element reassignment
   const [schedulerHeaderEl, setSchedulerHeaderEl] = useState(null);
-  const setSchedulerHeaderRef = useCallback(
-    el => {
-      schedulerHeaderRef.current = el;
-      setSchedulerHeaderEl(el);
-    },
-    [schedulerHeaderRef]
-  );
+  const setSchedulerHeaderRef = useCallback(el => {
+    schedulerHeaderRef.current = el;
+    setSchedulerHeaderEl(el);
+  }, []);
 
   // Scroll sync refs
   const schedulerHeadRef = useRef(null);
@@ -466,6 +463,10 @@ function Scheduler(props) {
     () => ({ isSelecting: selectionState.isSelecting, left: selectionState.left, width: selectionState.width }),
     [selectionState.isSelecting, selectionState.left, selectionState.width]
   );
+  const selectedIdsSet = useMemo(
+    () => new Set(selectionState.selectedResourceIds),
+    [selectionState.selectedResourceIds]
+  );
   const resourceEventsList = useMemo(
     () =>
       displayRenderData.map(item => (
@@ -491,7 +492,7 @@ function Scheduler(props) {
           newEvent={props.newEvent}
           eventItemTemplateResolver={props.eventItemTemplateResolver}
           onSelectionChange={handleSelectionChange}
-          isRowSelected={selectionState.selectedResourceIds.includes(item.slotId)}
+          isRowSelected={selectedIdsSet.has(item.slotId)}
           selectionPreview={selectionPreview}
         />
       )),
@@ -516,7 +517,7 @@ function Scheduler(props) {
       props.newEvent,
       props.eventItemTemplateResolver,
       handleSelectionChange,
-      selectionState.selectedResourceIds,
+      selectedIdsSet,
       selectionPreview,
     ]
   );
