@@ -62,9 +62,9 @@ function ResourceView({
     const isRowSelected =
       isSelecting && Array.isArray(selectedResourceIds) && selectedResourceIds.includes(item.slotId);
     if (isRowSelected) {
-      tdStyle.backgroundColor = '#e6f4ff';
-      tdStyle.borderLeft = '3px solid #1677ff';
-      tdStyle.boxShadow = 'inset 0 0 0 1px #91caff';
+      tdStyle.backgroundColor = schedulerData.config.selectedSlotColor || '#e6f4ff';
+      tdStyle.borderLeft = `3px solid ${schedulerData.config.selectedSlotBorderColor || '#1677ff'}`;
+      tdStyle.boxShadow = `inset 0 0 0 1px ${schedulerData.config.selectedSlotShadowColor || '#91caff'}`;
     }
 
     if (CustomResourceCell) {

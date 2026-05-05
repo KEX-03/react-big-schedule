@@ -29,7 +29,8 @@ class ResourceEvents extends PureComponent {
     newEvent: PropTypes.func,
     eventItemTemplateResolver: PropTypes.func,
     onSelectionChange: PropTypes.func,
-    selectionState: PropTypes.object,
+    isRowSelected: PropTypes.bool,
+    selectionPreview: PropTypes.object,
   };
 
   constructor(props) {
@@ -70,8 +71,26 @@ class ResourceEvents extends PureComponent {
   }
 
   componentWillUnmount() {
-    this.emitSelectionChange(false, []);
+    const { isSelecting } = this.state;
+    if (isSelecting) {
+      this.emitSelectionChange(false, []);
+    }
+    this.cleanupDragInteraction();
+    this.supportTouchHelper('remove');
+    if (!isSelecting) {
+      this.emitSelectionChange(false, []);
+    }
   }
+
+  cleanupDragInteraction = () => {
+    document.documentElement.removeEventListener('touchmove', this.doDrag, false);
+    document.documentElement.removeEventListener('touchend', this.stopDrag, false);
+    document.documentElement.removeEventListener('touchcancel', this.cancelDrag, false);
+    document.documentElement.removeEventListener('mousemove', this.doDrag, false);
+    document.documentElement.removeEventListener('mouseup', this.stopDrag, false);
+    document.onselectstart = null;
+    document.ondragstart = null;
+  };
 
   supportTouchHelper = (evType = 'add') => {
     const ev = evType === 'add' ? this.eventContainer.addEventListener : this.eventContainer.removeEventListener;
@@ -214,21 +233,12 @@ class ResourceEvents extends PureComponent {
   };
 
   stopDrag = ev => {
-    ev.stopPropagation();
+    if (ev?.stopPropagation) ev.stopPropagation();
 
     const { schedulerData, newEvent, resourceEvents } = this.props;
     const { headers, events, config, cellUnit, localeDayjs } = schedulerData;
     const { leftIndex, rightIndex } = this.state;
-    if (this.supportTouch) {
-      document.documentElement.removeEventListener('touchmove', this.doDrag, false);
-      document.documentElement.removeEventListener('touchend', this.stopDrag, false);
-      document.documentElement.removeEventListener('touchcancel', this.cancelDrag, false);
-    } else {
-      document.documentElement.removeEventListener('mousemove', this.doDrag, false);
-      document.documentElement.removeEventListener('mouseup', this.stopDrag, false);
-    }
-    document.onselectstart = null;
-    document.ondragstart = null;
+    this.cleanupDragInteraction();
 
     const startTime = headers[leftIndex].time;
     let endTime = resourceEvents.headerItems[rightIndex - 1].end;
@@ -316,15 +326,11 @@ class ResourceEvents extends PureComponent {
   };
 
   cancelDrag = ev => {
-    ev.stopPropagation();
+    if (ev?.stopPropagation) ev.stopPropagation();
 
     const { isSelecting } = this.state;
     if (isSelecting) {
-      document.documentElement.removeEventListener('touchmove', this.doDrag, false);
-      document.documentElement.removeEventListener('touchend', this.stopDrag, false);
-      document.documentElement.removeEventListener('touchcancel', this.cancelDrag, false);
-      document.onselectstart = null;
-      document.ondragstart = null;
+      this.cleanupDragInteraction();
       this.setState({
         startX: 0,
         leftIndex: 0,
@@ -423,11 +429,10 @@ class ResourceEvents extends PureComponent {
       <div />
     );
 
-    const sharedSelecting = this.props.selectionState?.isSelecting;
-    const sharedSelectedResourceIds = this.props.selectionState?.selectedResourceIds || [];
-    const isSharedSelectedRow = sharedSelecting && sharedSelectedResourceIds.includes(resourceEvents.slotId);
-    const sharedLeft = this.props.selectionState?.left || 0;
-    const sharedWidth = this.props.selectionState?.width || 0;
+    const sharedSelecting = this.props.selectionPreview?.isSelecting;
+    const isSharedSelectedRow = sharedSelecting && this.props.isRowSelected;
+    const sharedLeft = this.props.selectionPreview?.left || 0;
+    const sharedWidth = this.props.selectionPreview?.width || 0;
     const sharedSelectedArea =
       !isSelecting && isSharedSelectedRow ? (
         <SelectedArea schedulerData={schedulerData} left={sharedLeft} width={sharedWidth} />
@@ -644,4 +649,4 @@ const ResourceEventsWithDnD = props => {
 
 ResourceEventsWithDnD.displayName = 'ResourceEventsWithDnD';
 
-export default ResourceEventsWithDnD;
+export default React.memo(ResourceEventsWithDnD);

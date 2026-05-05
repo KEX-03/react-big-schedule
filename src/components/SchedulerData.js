@@ -251,10 +251,12 @@ export default class SchedulerData {
     this.showAgenda = showAgenda;
     this.isEventPerspective = isEventPerspective;
 
-    // Only set cellUnit to Day when view is not Day; set to Hour for Day view
+    const isCustomView = viewType === ViewType.Custom || viewType === ViewType.Custom1 || viewType === ViewType.Custom2;
+
+    // Force built-in views only; custom views can provide their own cellUnit via custom date behavior.
     if (viewType === ViewType.Day) {
       this.cellUnit = CellUnit.Hour;
-    } else {
+    } else if (!isCustomView) {
       this.cellUnit = CellUnit.Day;
     }
 

@@ -444,13 +444,28 @@ function Scheduler(props) {
   const displayRenderData = useMemo(() => renderData.filter(o => o.render), [renderData]);
   const eventDndSource = dndContext.getDndSource();
   const handleSelectionChange = useCallback((isSelecting, selectedResourceIds, preview = {}) => {
-    setSelectionState({
-      isSelecting,
-      selectedResourceIds: selectedResourceIds || [],
-      left: preview.left || 0,
-      width: preview.width || 0,
+    const nextSelectedResourceIds = selectedResourceIds || [];
+    const nextLeft = preview.left || 0;
+    const nextWidth = preview.width || 0;
+    setSelectionState(prev => {
+      const sameIdsLength = prev.selectedResourceIds.length === nextSelectedResourceIds.length;
+      const sameIds =
+        sameIdsLength && prev.selectedResourceIds.every((id, index) => id === nextSelectedResourceIds[index]);
+      if (prev.isSelecting === isSelecting && prev.left === nextLeft && prev.width === nextWidth && sameIds) {
+        return prev;
+      }
+      return {
+        isSelecting,
+        selectedResourceIds: nextSelectedResourceIds,
+        left: nextLeft,
+        width: nextWidth,
+      };
     });
   }, []);
+  const selectionPreview = useMemo(
+    () => ({ isSelecting: selectionState.isSelecting, left: selectionState.left, width: selectionState.width }),
+    [selectionState.isSelecting, selectionState.left, selectionState.width]
+  );
   const resourceEventsList = useMemo(
     () =>
       displayRenderData.map(item => (
@@ -476,7 +491,8 @@ function Scheduler(props) {
           newEvent={props.newEvent}
           eventItemTemplateResolver={props.eventItemTemplateResolver}
           onSelectionChange={handleSelectionChange}
-          selectionState={selectionState}
+          isRowSelected={selectionState.selectedResourceIds.includes(item.slotId)}
+          selectionPreview={selectionPreview}
         />
       )),
     [
@@ -500,7 +516,8 @@ function Scheduler(props) {
       props.newEvent,
       props.eventItemTemplateResolver,
       handleSelectionChange,
-      selectionState,
+      selectionState.selectedResourceIds,
+      selectionPreview,
     ]
   );
 
